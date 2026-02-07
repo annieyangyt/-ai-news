@@ -1,75 +1,74 @@
 import feedparser
 import requests
 import os
+import json
 from datetime import datetime, timedelta
 
-# --- 1. 定向追踪源配置 ---
-# 官方公告源 + 高权重行业源
+# --- 1. 定向追踪源 ---
 OFFICIAL_FEEDS = {
     "OpenAI": "https://openai.com/news/rss.xml",
     "NVIDIA": "https://blogs.nvidia.com/blog/category/deep-learning/feed/",
     "Google AI": "http://feeds.feedburner.com/blogspot/gJZg",
-    "Apple ML": "https://machinelearning.apple.com/rss.xml",
-    "The Verge (AI)": "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml"
+    "xAI/Musk": "https://news.google.com/rss/search?q=Elon+Musk+xAI+when:1d&hl=en-US&gl=US&ceid=US:en"
 }
-
-# 马斯克/xAI 专属动态（利用谷歌新闻搜索接口）
-MUSK_QUERY = "https://news.google.com/rss/search?q=Elon+Musk+xAI+Tesla+AI+when:1d&hl=en-US&gl=US&ceid=US:en"
-
-# --- 2. 关键词过滤（针对通用源） ---
-HOT_COMPANIES = ['NVIDIA', 'OPENAI', 'GOOGLE', 'MUSK', 'XAI', 'TESLA', 'GROK', 'ANTHROPIC', 'CLAUDE', '英伟达', '马斯克']
 
 def fetch_news():
     news_items = []
     seen_links = set()
-    now = datetime.utcnow()
-    yesterday = now - timedelta(days=1)
+    yesterday = datetime.utcnow() - timedelta(days=1)
 
-    # 遍历官方源
     for source_name, url in OFFICIAL_FEEDS.items():
         feed = feedparser.parse(url)
         for entry in feed.entries:
-            if is_recent(entry, yesterday) and entry.link not in seen_links:
-                news_items.append(f"[{source_name}] {entry.title}\n{entry.link}")
-                seen_links.add(entry.link)
-
-    # 抓取马斯克相关动态
-    musk_feed = feedparser.parse(MUSK_QUERY)
-    for entry in musk_feed.entries:
-        # 在马斯克源中，我们额外检查一下关键词，过滤掉无关的八卦
-        text = (entry.title + getattr(entry, 'summary', '')).upper()
-        if any(kw in text for kw in ['AI', 'XAI', 'GROK', 'ROBOT', 'CHIP']):
-            if is_recent(entry, yesterday) and entry.link not in seen_links:
-                news_items.append(f"[Musk/xAI 相关] {entry.title}\n{entry.link}")
-                seen_links.add(entry.link)
-
+            try:
+                pub_time = datetime(*entry.published_parsed[:6])
+                if pub_time > yesterday and entry.link not in seen_links:
+                    news_items.append(f"【{source_name}】{entry.title}")
+                    seen_links.add(entry.link)
+            except: continue
     return news_items
 
-def is_recent(entry, yesterday):
-    """判断文章是否为过去24小时内发布"""
-    try:
-        pub_time = datetime(*entry.published_parsed[:6])
-        return pub_time > yesterday
-    except:
-        return True # 如果无法解析时间，默认保留（防止漏掉重要新闻）
-
-def send_to_wechat(news_list, sendkey):
+# --- 2. Gemini 秘书核心：总结新闻 ---
+def get_gemini_summary(news_list):
     if not news_list:
-        print("今日无重要 AI 巨头动态。")
-        return
+        return "今日 AI 巨头们很安静，没有重大新闻。"
     
-    content = "\n\n".join([f"🔥 {item}" for item in news_list])
+    api_key = os.getenv("GEMINI_API_KEY")
+    all_titles = "\n".join(news_list)
+    
+    # Gemini 1.5 Flash 的标准接口地址
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    prompt = f"你是一个资深的AI行业分析师。以下是过去24小时内的AI巨头动态：\n{all_titles}\n\n请完成：1.用一句话概括今日最核心事件。2.以子弹笔记列出3-5条重点。请使用中文，保持专业简洁。"
+
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    headers = {'Content-Type': 'application/json'}
+
+    try:
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        result = response.json()
+        # 解析 Gemini 返回的特定 JSON 结构
+        return result['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        print(f"Gemini 接口调用失败: {e}")
+        return f"AI 秘书罢工了，请直接查看原始标题：\n{all_titles}"
+
+# --- 3. 推送 ---
+def send_to_wechat(summary, sendkey):
     url = f"https://sctapi.ftqq.com/{sendkey}.send"
     data = {
-        "title": f"🤖 AI 巨头情报 - {datetime.now().strftime('%m月%d日')}",
-        "desp": f"### 过去24小时核心大厂动态：\n\n{content}\n\n---\n*由 GitHub Actions 自动筛选推送*"
+        "title": f"🤖 Gemini AI 简报 - {datetime.now().strftime('%m月%d日')}",
+        "desp": f"{summary}\n\n---\n*由 Gemini 1.5 Flash 智能总结*"
     }
     requests.post(url, data=data)
 
 if __name__ == "__main__":
-    key = os.getenv("SERVERCHAN_SENDKEY")
-    if key:
-        results = fetch_news()
-        send_to_wechat(results, key)
-    else:
-        print("未检测到密钥，请检查 GitHub Secrets。")
+    sendkey = os.getenv("SERVERCHAN_SENDKEY")
+    news = fetch_news()
+    summary = get_gemini_summary(news)
+    send_to_wechat(summary, sendkey)
