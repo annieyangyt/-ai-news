@@ -1,46 +1,68 @@
 import feedparser
 import requests
-import time
 from datetime import datetime, timedelta
+import os
 
-# 配置信息
-# 这里使用 IT之家的 RSS 源，你也可以更换为 https://36kr.com/feed
-RSS_URL = 'https://www.ithome.com/rss/'
-SERVERCHAN_KEY = "" # 通过环境变量获取，不要硬编码在这里
+# --- 核心配置：权威 AI 资讯源 ---
+AI_FEEDS = [
+    'https://openai.com/news/rss.xml',              # OpenAI 官方公告
+    'https://www.theverge.com/ai-artificial-intelligence/rss/index.xml', # The Verge AI 频道
+    'https://arstechnica.com/tag/ai/feed/',         # Ars Technica AI 深度报道
+    'https://www.technologyreview.com/topic/artificial-intelligence/feed/', # MIT 科技评论
+    'https://www.wired.com/category/science/ai/feed/' # Wired AI 专栏
+]
 
-def get_tech_news():
-    feed = feedparser.parse(RSS_URL)
+# --- 过滤机制：确保内容真的跟 AI 相关 ---
+# 只有标题或摘要包含以下词汇的文章才会被选中
+KEYWORDS = ['AI', 'GPT', 'LLM', 'OpenAI', 'DeepMind', 'Claude', 'Agent', '模型', '人工智能', '机器人']
+
+def get_filtered_ai_news():
+    news_list = []
+    seen_links = set() # 用于去重
     now = datetime.utcnow()
     yesterday = now - timedelta(days=1)
     
-    news_list = []
-    for entry in feed.entries:
-        # 解析发布时间并转为 UTC
-        pub_time = datetime(*entry.published_parsed[:6])
-        if pub_time > yesterday:
-            title = entry.title
-            link = entry.link
-            news_list.append(f"- [{title}]({link})")
-    
-    return "\n".join(news_list)
+    for url in AI_FEEDS:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries:
+                # 1. 检查发布时间（过去 24 小时）
+                pub_time = datetime(*entry.published_parsed[:6])
+                if pub_time < yesterday:
+                    continue
+                
+                # 2. 检查去重
+                if entry.link in seen_links:
+                    continue
+                
+                # 3. 关键词双重保险过滤
+                text_to_check = (entry.title + getattr(entry, 'summary', '')).upper()
+                if any(kw.upper() in text_to_check for kw in KEYWORDS):
+                    title = entry.title.strip()
+                    news_list.append(f"- **{title}**\n  [点击阅读]({entry.link})")
+                    seen_links.add(entry.link)
+        except Exception as e:
+            print(f"解析 {url} 失败: {e}")
+            
+    return "\n\n".join(news_list)
 
 def send_to_wechat(content, sendkey):
     if not content:
-        content = "今日暂无重大科技更新。"
+        print("今日无重要 AI 资讯。")
+        return
     
     url = f"https://sctapi.ftqq.com/{sendkey}.send"
     data = {
-        "title": f"今日科技早报 - {datetime.now().strftime('%Y-%m-%d')}",
-        "desp": f"### 过去24小时资讯总结：\n\n{content}\n\n---\n*推送自 GitHub Actions*"
+        "title": f"🤖 AI 深度情报 - {datetime.now().strftime('%m月%d日')}",
+        "desp": f"### 过去24小时精选 AI 动态：\n\n{content}\n\n---\n*推送自你的私有情报机器人*"
     }
     res = requests.post(url, data=data)
-    print(f"推送结果: {res.text}")
+    print(f"推送状态: {res.text}")
 
 if __name__ == "__main__":
-    import os
     key = os.getenv("SERVERCHAN_SENDKEY")
     if key:
-        news = get_tech_news()
-        send_to_wechat(news, key)
+        content = get_filtered_ai_news()
+        send_to_wechat(content, key)
     else:
-        print("未找到 SERVERCHAN_SENDKEY，请在 GitHub Secrets 中配置。")
+        print("错误：未配置 SERVERCHAN_SENDKEY")
