@@ -1,0 +1,30 @@
+name: Daily Tech News Push
+
+on:
+  schedule:
+    # 这里的 0 0 代表 UTC 时间 0:00，即北京时间早上 8:00
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 这个配置让你能手动点一下按钮就运行，方便调试
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # 给你的脚本分配一台虚拟的 Linux 电脑
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # 这一步是让虚拟电脑把你的代码“下载”下来
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install feedparser requests # 安装运行脚本必需的“零件”
+
+    - name: Run script
+      env:
+        # 这一步非常关键！它把你在 Settings 里存的 Key 传给 Python 脚本
+        SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+      run: python tech_news.py
