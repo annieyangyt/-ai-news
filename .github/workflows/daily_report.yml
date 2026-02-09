@@ -2,8 +2,8 @@ name: Daily Tech News Push
 
 on:
   schedule:
-    # 每天北京时间早上 8:00 (UTC 0:00) 运行
-    - cron: '0 0 * * *'
+# 每天北京时间早上 7:00 (即 UTC 前一天 23:00) 运行
+    - cron: '0 23 * * *'
   workflow_dispatch: # 允许手动点击运行
 
 jobs:
