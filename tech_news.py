@@ -31,32 +31,35 @@ def fetch_news():
 # --- 2. Gemini 秘书核心：总结新闻 ---
 def get_gemini_summary(news_list):
     if not news_list:
-        return "今日 AI 巨头们很安静，没有重大新闻。"
+        return "今日 AI 巨头们很安静。"
     
     api_key = os.getenv("GEMINI_API_KEY")
     all_titles = "\n".join(news_list)
     
-    # Gemini 1.5 Flash 的标准接口地址
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # --- 关键修改点：将模型升级为 2.5-flash ---
+    # 你也可以选择 gemini-3-flash-preview 获取最新一代能力
+    model_name = "gemini-2.5-flash" 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
-    prompt = f"你是一个资深的AI行业分析师。以下是过去24小时内的AI巨头动态：\n{all_titles}\n\n请完成：1.用一句话概括今日最核心事件。2.以子弹笔记列出3-5条重点。请使用中文，保持专业简洁。"
+    prompt = f"你是一个资深的 AI 行业分析师。以下是过去 24 小时内的 AI 动态：\n{all_titles}\n\n请用中文完成：1. 一句话概括今日核心事件。2. 重点资讯摘要（子弹笔记）。"
 
     payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
+        "contents": [{"parts": [{"text": prompt}]}]
     }
     
     headers = {'Content-Type': 'application/json'}
 
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         result = response.json()
-        # 解析 Gemini 返回的特定 JSON 结构
-        return result['candidates'][0]['content']['parts'][0]['text']
+        
+        if 'candidates' in result:
+            return result['candidates'][0]['content']['parts'][0]['text']
+        else:
+            error_info = result.get('error', {}).get('message', '未知模型错误')
+            return f"⚠️ API 报错: {error_info}\n\n原始情报：\n{all_titles}"
     except Exception as e:
-        print(f"Gemini 接口调用失败: {e}")
-        return f"AI 秘书罢工了，请直接查看原始标题：\n{all_titles}"
+        return f"🚨 请求失败: {str(e)}\n\n原始情报：\n{all_titles}"
 
 # --- 3. 推送 ---
 def send_to_wechat(summary, sendkey):
