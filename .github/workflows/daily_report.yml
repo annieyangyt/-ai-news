@@ -1,10 +1,10 @@
-name: Daily Tech News Push
+name: Daily Strategy Insight Push
 
 on:
   schedule:
-# 每天北京时间早上 7:00 (即 UTC 前一天 23:00) 运行
+    # 每天北京时间早上 7:00 (UTC 23:00) 运行
     - cron: '0 23 * * *'
-  workflow_dispatch: # 允许手动点击运行
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,12 +20,12 @@ jobs:
         python-version: '3.9'
 
     - name: Install dependencies
+      # 使用 | 确保多行命令在 YAML 中被正确解析
       run: |
         pip install feedparser requests
 
-    - name: Run script
+    - name: Run PM Analysis
       env:
-        # 这里必须和你 GitHub Secrets 里的名字一模一样
         SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python tech_news.py
