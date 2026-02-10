@@ -266,7 +266,7 @@ def get_gemini_analysis(news_list, historical_context):
     
     prompt = build_analysis_prompt(news_list, historical_context)
     
-    model_name = "gemini-2.0-flash-exp"  # 使用更强的模型
+    model_name = "gemini-2.5-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
     
     payload = {
