@@ -41,7 +41,7 @@ jobs:
     # 🆕 可选：上传报告为 Artifact（可下载查看）
     - name: Upload report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: daily-report-${{ github.run_number }}
         path: reports/
