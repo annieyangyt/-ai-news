@@ -5,38 +5,30 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# --- 配置区 ---
+# --- 1. 配置区 ---
 FEEDS = {
-    # 全球 AI 巨头
     "OpenAI": "https://openai.com/news/rss.xml",
     "NVIDIA": "https://blogs.nvidia.com/blog/category/deep-learning/feed/",
     "Google AI": "http://feeds.feedburner.com/blogspot/gJZg",
     "xAI/Musk": "https://news.google.com/rss/search?q=Elon+Musk+xAI+when:1d&hl=en-US&gl=US&ceid=US:en",
     "Anthropic": "https://news.google.com/rss/search?q=Anthropic+Claude+when:1d&hl=en-US&gl=US&ceid=US:en",
-    
-    # 中国 AI 资讯
     "36Kr-AI": "https://36kr.com/feed",
     "IT之家-AI": "https://www.ithome.com/rss/"
 }
 
-# 中国 AI 关键词
 CHINA_KEYWORDS = ['百度', '文心一言', '阿里', '通义千问', '腾讯', '混元', '字节跳动', '豆包', 
                   '华为', '盘古', '智谱', 'Kimi', '月之暗面', 'DeepSeek', '中国', '商汤', 
                   '科大讯飞', '星火', 'MiniMax', '海螺AI']
 
-# 历史数据存储路径
 HISTORY_FILE = Path("news_history.json")
-HISTORY_DAYS = 90  # 保留90天历史用于对比分析
+HISTORY_DAYS = 90
 
-
-# --- 核心功能模块 ---
+# --- 2. 核心抓取与历史功能 ---
 
 def fetch_news():
-    """抓取最新24小时的新闻"""
     news_items = []
     seen_links = set()
     yesterday = datetime.utcnow() - timedelta(days=1)
-
     for source_name, url in FEEDS.items():
         try:
             feed = feedparser.parse(url)
@@ -52,83 +44,40 @@ def fetch_news():
                             "timestamp": pub_time.isoformat()
                         })
                         seen_links.add(entry.link)
-                except:
-                    continue
-        except Exception as e:
-            print(f"Error fetching {source_name}: {e}")
-            continue
-    
+                except: continue
+        except Exception as e: print(f"Error fetching {source_name}: {e}"); continue
     return news_items
 
-
 def load_history():
-    """加载历史新闻数据"""
-    if not HISTORY_FILE.exists():
-        return []
-    
+    if not HISTORY_FILE.exists(): return []
     try:
         with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
             history = json.load(f)
-        
-        # 清理超过保留期的数据
         cutoff_date = datetime.utcnow() - timedelta(days=HISTORY_DAYS)
-        history = [
-            item for item in history 
-            if datetime.fromisoformat(item['timestamp']) > cutoff_date
-        ]
-        return history
-    except:
-        return []
-
+        return [item for item in history if datetime.fromisoformat(item['timestamp']) > cutoff_date]
+    except: return []
 
 def save_history(new_items, history):
-    """保存新闻到历史记录"""
     combined = history + new_items
-    
-    # 去重（基于链接）
     seen = set()
     unique_items = []
     for item in combined:
         if item['link'] not in seen:
             seen.add(item['link'])
             unique_items.append(item)
-    
     with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
         json.dump(unique_items, f, ensure_ascii=False, indent=2)
 
-
 def extract_historical_context(history):
-    """从历史中提取关键事件用于对比分析"""
-    if not history:
-        return "无历史数据"
-    
-    # 按时间倒序排列
+    if not history: return "无历史数据"
     history_sorted = sorted(history, key=lambda x: x['timestamp'], reverse=True)
-    
-    # 提取过去30天和60-90天的关键新闻（用于跨时空对比）
     now = datetime.utcnow()
-    last_30_days = [
-        item for item in history_sorted 
-        if (now - datetime.fromisoformat(item['timestamp'])).days <= 30
-    ]
-    
-    days_60_90 = [
-        item for item in history_sorted 
-        if 60 <= (now - datetime.fromisoformat(item['timestamp'])).days <= 90
-    ]
-    
-    context = {
-        "recent_30_days": last_30_days[:15],  # 最近30天取15条
-        "historical_60_90": days_60_90[:10]   # 2-3个月前取10条
-    }
-    
-    return context
+    last_30 = [i for i in history_sorted if (now - datetime.fromisoformat(i['timestamp'])).days <= 30]
+    days_60_90 = [i for i in history_sorted if 60 <= (now - datetime.fromisoformat(i['timestamp'])).days <= 90]
+    return {"recent_30_days": last_30[:15], "historical_60_90": days_60_90[:10]}
 
 
 def build_analysis_prompt(news_list, historical_context):
-    """构建包含分析框架的Prompt"""
-    
-    # 今日新闻列表
     today_news = ""
     for idx, item in enumerate(news_list):
         today_news += f"{idx+1}. 【{item['source']}】{item['title']}\n   链接: {item['link']}\n"
@@ -256,199 +205,84 @@ def build_analysis_prompt(news_list, historical_context):
 
 
 def get_gemini_analysis(news_list, historical_context):
-    """调用Gemini进行深度分析"""
-    if not news_list:
-        return "今日 AI 行业动态较少，暂无重大事件。"
-    
+    if not news_list: return "今日无重大事件。"
     api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return "错误：未设置 GEMINI_API_KEY"
-    
     prompt = build_analysis_prompt(news_list, historical_context)
-    
-    model_name = "gemini-2.5-flash"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 4096
-        }
-    }
-    headers = {'Content-Type': 'application/json'}
-
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096}}
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        result = response.json()
-        
-        if 'candidates' in result and result['candidates']:
-            return result['candidates'][0]['content']['parts'][0]['text']
-        else:
-            error_msg = result.get('error', {}).get('message', '未知错误')
-            return f"Gemini 返回异常：{error_msg}"
-    
-    except Exception as e:
-        return f"AI 分析失败：{str(e)}"
+        response = requests.post(url, json=payload, timeout=60)
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e: return f"AI 分析失败：{str(e)}"
 
-import feedparser
-import requests
-import os
-import json
-from datetime import datetime, timedelta
-from pathlib import Path
-
-# --- [此处保留你原有的 FEEDS, CHINA_KEYWORDS, fetch_news, load_history, save_history 逻辑] ---
+# --- 4. 网页生成与推送 (商业化核心) ---
 
 def generate_web_page(analysis_report):
-    """将 Markdown 转换为带样式的 HTML 网页"""
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="zh-CN">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI 商业内参 - {datetime.now().strftime('%m月%d日')}</title>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
-        <style>
-            .markdown-body {{ box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }}
-            @media (max-width: 767px) {{ .markdown-body {{ padding: 15px; }} }}
-            body {{ background-color: #f6f8fa; }}
-        </style>
-    </head>
-    <body class="markdown-body">
-        <p style="text-align: right; color: #666;">更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-        {analysis_report} 
-    </body>
-    </html>
-    """
-    # 注意：这里为了简单直接放入了 MD。生产环境中建议用 markdown 库转换，
-    # 但 GitHub Pages 支持直接渲染 .md 文件，我们可以直接存为 index.md
-    with open("index.md", "w", encoding="utf-8") as f:
-        f.write(analysis_report)
+    """生成 index.md 供 GitHub Pages 渲染"""
+    try:
+        with open("index.md", "w", encoding="utf-8") as f:
+            f.write(analysis_report)
+        print("✅ 网页文件 index.md 已生成")
+    except Exception as e: print(f"❌ 网页生成失败：{e}")
 
 def send_smart_push(analysis_report, sendkey, username, repo_name):
-    """微信只推送摘要和链接，避免截断"""
-    # 提取今日核心概括（假设它在第一部分）
-    summary_lines = analysis_report.split('\n')
-    core_insight = ""
-    for line in summary_lines:
-        if "今日核心事件" in line or "🌟" in line:
-            core_insight = line
-            break
-            
+    """精简推送，解决微信截断问题"""
+    if not sendkey: return
+    
+    # 提取核心洞察
+    lines = analysis_report.split('\n')
+    core_insight = next((l for l in lines if "今日核心事件" in l or "🌟" in l), "AI 行业深度变革进行中...")
     web_url = f"https://{username}.github.io/{repo_name}/"
     
     push_content = f"""
 ### 🌟 今日核心洞察
-{core_insight if core_insight else "AI 行业深度变革进行中..."}
+{core_insight}
 
 ---
-💡 **由于内容较长，深度分析（二阶效应、中美对比、PM决策建议）已同步至个人情报站：**
+💡 **由于内容较长，深度分析（二阶效应、中美对比、决策建议）已同步至情报站：**
 
 🔗 [点击查看完整深度研报]({web_url})
 
 ---
-*Generated by Gemini 2.5 Pro*
+✨ *Generated by Gemini 2.5 Flash*
     """
-    
     url = f"https://sctapi.ftqq.com/{sendkey}.send"
-    data = {"title": f"🧠 AI 商业内参 - {datetime.now().strftime('%m月%d日')}", "desp": push_content}
-    requests.post(url, data=data)
+    requests.post(url, data={"title": f"🧠 AI 商业内参 - {datetime.now().strftime('%m月%d日')}", "desp": push_content}, timeout=10)
+    print("✅ 微信精简版推送成功")
 
-# 修改 main 函数中的调用逻辑
-def main():
-    # ... 前面的抓取和分析代码保持不变 ...
-    news_data = fetch_news()
-    history = load_history()
-    historical_context = extract_historical_context(history)
-    analysis_report = get_gemini_analysis(news_data, historical_context)
-    
-    # 1. 生成网页文件
-    with open("index.md", "w", encoding="utf-8") as f:
-        f.write(analysis_report)
-    
-    # 2. 微信推送（精简版）
-    sendkey = os.getenv("SERVERCHAN_SENDKEY")
-    # 请确保你在 GitHub Secrets 里设置了这两个变量，或者手动填入
-    username = "annieyangyt" 
-    repo_name = "ai-news" 
-    send_smart_push(analysis_report, sendkey, username, repo_name)
-    
-    # 3. 存档
-    save_history(news_data, history)
-
-def send_to_wechat(summary, sendkey):
-    """发送到微信"""
-    if not sendkey:
-        print("未设置 SERVERCHAN_SENDKEY，跳过微信推送")
-        return
-    
-    url = f"https://sctapi.ftqq.com/{sendkey}.send"
-    data = {
-        "title": f"🧠 AI 行业深度简报 - {datetime.now().strftime('%m月%d日')}",
-        "desp": f"{summary}\n\n---\n✨ *由 Gemini 2.0 驱动 | 包含历史对比与战略分析*"
-    }
-    
-    try:
-        resp = requests.post(url, data=data, timeout=10)
-        if resp.status_code == 200:
-            print("✅ 微信推送成功")
-        else:
-            print(f"⚠️ 微信推送失败：{resp.status_code}")
-    except Exception as e:
-        print(f"❌ 微信推送异常：{e}")
-
-
-# --- 主流程 ---
+# --- 5. 唯一主流程 ---
 
 def main():
-    print("=" * 50)
-    print("🚀 AI 行业深度分析系统启动")
-    print("=" * 50)
+    print("=" * 50 + "\n🚀 AI 行业深度分析系统启动\n" + "=" * 50)
     
-    # 1. 抓取今日新闻
-    print("\n📡 正在抓取最新新闻...")
+    # 抓取与历史
     news_data = fetch_news()
-    print(f"✅ 获取到 {len(news_data)} 条新闻")
+    if not news_data: print("⚠️ 今日无新闻，退出"); return
     
-    if not news_data:
-        print("⚠️ 今日无新闻，退出")
-        return
-    
-    # 2. 加载历史数据
-    print("\n📚 加载历史数据...")
     history = load_history()
-    print(f"✅ 历史库中有 {len(history)} 条记录")
-    
-    # 3. 提取历史上下文
-    print("\n🔍 分析历史趋势...")
     historical_context = extract_historical_context(history)
     
-    # 4. 调用AI进行深度分析
-    print("\n🧠 正在生成深度分析报告（需要30-60秒）...")
+    # AI 分析
+    print("\n🧠 正在生成深度分析报告...")
     analysis_report = get_gemini_analysis(news_data, historical_context)
     
-    # 5. 保存今日数据到历史库
-    print("\n💾 保存到历史库...")
+    # --- 核心产出 ---
+    # 1. 生成网页
+    generate_web_page(analysis_report)
+    
+    # 2. 精简推送
+    sk = os.getenv("SERVERCHAN_SENDKEY")
+    send_smart_push(analysis_report, sk, "annieyangyt", "ai-news")
+    
+    # 3. 存档历史
     save_history(news_data, history)
     
-    # 6. 推送到微信
-    print("\n📱 推送到微信...")
-    sendkey = os.getenv("SERVERCHAN_SENDKEY")
-    send_to_wechat(analysis_report, sendkey)
-    
-    # 7. 本地保存备份
+    # 4. 本地备份
     output_file = f"reports/report_{datetime.now().strftime('%Y%m%d')}.md"
     os.makedirs("reports", exist_ok=True)
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(analysis_report)
-    print(f"✅ 报告已保存到 {output_file}")
-    
-    print("\n" + "=" * 50)
-    print("✨ 分析完成！")
-    print("=" * 50)
-
+    print(f"✅ 报告已本地保存至 {output_file}\n" + "=" * 50 + "\n✨ 分析完成！")
 
 if __name__ == "__main__":
     main()
