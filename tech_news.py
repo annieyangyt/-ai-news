@@ -272,7 +272,7 @@ def main():
     
     # 2. 精简推送
     sk = os.getenv("SERVERCHAN_SENDKEY")
-    send_smart_push(analysis_report, sk, "annieyangyt", "ai-news")
+    send_smart_push(analysis_report, sk, "annieyangyt", "-ai-news")
     
     # 3. 存档历史
     save_history(news_data, history)
