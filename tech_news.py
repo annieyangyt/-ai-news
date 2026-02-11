@@ -218,12 +218,17 @@ def get_gemini_analysis(news_list, historical_context):
 # --- 4. 网页生成与推送 (商业化核心) ---
 
 def generate_web_page(analysis_report):
-    """生成 index.md 供 GitHub Pages 渲染"""
+    """生成带 Front Matter 的 index.md，强制触发渲染"""
     try:
+        # 核心修改：在报告内容最前面加上两行 ---
+        # 这样 GitHub Pages 才会知道这是一个需要转换成网页的 index 文件
+        web_content = "---\n---\n\n" + analysis_report 
+        
         with open("index.md", "w", encoding="utf-8") as f:
-            f.write(analysis_report)
-        print("✅ 网页文件 index.md 已生成")
-    except Exception as e: print(f"❌ 网页生成失败：{e}")
+            f.write(web_content)
+        print("✅ 网页文件 index.md 已生成（已添加渲染开关）")
+    except Exception as e: 
+        print(f"❌ 网页生成失败：{e}")
 
 def send_smart_push(analysis_report, sendkey, username, repo_name):
     """精简推送，解决微信截断问题"""
