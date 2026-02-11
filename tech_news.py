@@ -229,10 +229,18 @@ def get_gemini_analysis(news_list, historical_context):
 # --- 4. 网页生成与推送 (商业化核心) ---
 
 def generate_web_page(analysis_report):
-    """直接生成 index.html，彻底解决网页显示不全和排版问题"""
+    """
+    高级版网页生成：
+    1. 自动将 Markdown 渲染为干净的 HTML
+    2. 使用“深邃商业蓝”主题
+    3. 彻底消除 ### 和 - 符号的视觉残留
+    """
     try:
-        # 将 Markdown 换行符转换为 HTML 标签，确保网页正常换行
-        formatted_report = analysis_report.replace('\n', '<br>')
+        import markdown # 如果运行报错，请在 workflow 里的 pip install 增加这个库
+        
+        # 将 AI 生成的 Markdown 转换为真正的 HTML 结构
+        # 这会自动把 ### 变成 <h3> 标签，把 - 变成 <li> 标签
+        html_body = markdown.markdown(analysis_report, extensions=['extra', 'codehilite'])
         
         html_template = f"""
 <!DOCTYPE html>
@@ -240,26 +248,59 @@ def generate_web_page(analysis_report):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 行业深度内参</title>
+    <title>AI 商业内参 | 深度决策支持</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
     <style>
-        .markdown-body {{ box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }}
-        @media (max-width: 767px) {{ .markdown-body {{ padding: 15px; }} }}
-        body {{ background-color: #f6f8fa; }}
+        /* 自定义极简商业样式 */
+        body {{ 
+            background-color: #fcfcfc; 
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }}
+        .markdown-body {{
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 45px;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            border-radius: 8px;
+            color: #2c3e50;
+            line-height: 1.8;
+        }}
+        /* 让标题更有质感 */
+        .markdown-body h1, .markdown-body h2 {{ border-bottom: 2px solid #3498db; padding-bottom: 10px; color: #1a2a3a; }}
+        .markdown-body h3 {{ color: #2980b9; margin-top: 2em; }}
+        /* 让列表更清爽，去掉多余的边距 */
+        .markdown-body ul {{ padding-left: 1.5em; }}
+        .markdown-body li {{ margin-bottom: 8px; }}
+        /* 响应式适配移动端 */
+        @media (max-width: 767px) {{
+            .markdown-body {{ padding: 25px 15px; border-radius: 0; }}
+        }}
+        .report-header {{ text-align: center; margin-bottom: 40px; border-bottom: 1px solid #eee; padding-bottom: 20px; }}
+        .report-header h4 {{ color: #95a5a6; font-weight: 400; }}
     </style>
 </head>
 <body>
-    <article class="markdown-body">
-        {formatted_report}
-    </article>
+    <div class="markdown-body">
+        <div class="report-header">
+            <h1>💡 AI 行业深度决策内参</h1>
+            <h4>{datetime.now().strftime('%Y年%m月%d日')} | 资深战略分析师视角</h4>
+        </div>
+        {html_body}
+        <div style="margin-top: 50px; border-top: 1px solid #eee; padding-top: 20px; color: #bdc3c7; font-size: 0.9em; text-align: center;">
+            此报告由分析师系统自动生成，基于底层逻辑推演，不构成投资建议。
+        </div>
+    </div>
 </body>
 </html>
         """
-        # 保存为 index.html 
         with open("index.html", "w", encoding="utf-8") as f:
             f.write(html_template)
-        print("✅ 网页文件 index.html 已成功生成（全量内容）")
-    except Exception as e: print(f"❌ 网页生成失败：{e}")
+        print("✅ 网页文件 index.html 已成功生成（已完成视觉净化）")
+    except Exception as e: 
+        print(f"❌ 网页生成失败：{e}")
 
 def send_smart_push(analysis_report, sendkey, username, repo_name):
     """精简推送，解决微信截断问题"""
