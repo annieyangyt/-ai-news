@@ -205,11 +205,22 @@ def build_analysis_prompt(news_list, historical_context):
 
 
 def get_gemini_analysis(news_list, historical_context):
-    if not news_list: return "今日无重大事件。"
+    # 只取前 10 条最重要的资讯进行深度分析，避免输入过长导致输出被截断
+    top_news = news_list[:10] 
+    if not top_news: return "今日无重大事件。"
+    
     api_key = os.getenv("GEMINI_API_KEY")
-    prompt = build_analysis_prompt(news_list, historical_context)
+    prompt = build_analysis_prompt(top_news, historical_context)
+    
+    # 使用支持更长输出的模型配置
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.7, "maxOutputTokens": 4096}}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}], 
+        "generationConfig": {
+            "temperature": 0.7, 
+            "maxOutputTokens": 8192  # 提升到 8192
+        }
+    }
     try:
         response = requests.post(url, json=payload, timeout=60)
         return response.json()['candidates'][0]['content']['parts'][0]['text']
@@ -218,12 +229,12 @@ def get_gemini_analysis(news_list, historical_context):
 # --- 4. 网页生成与推送 (商业化核心) ---
 
 def generate_web_page(analysis_report):
-    """生成带样式的 index.html，彻底解决 404 并实现精美排版"""
+    """直接生成 index.html，彻底解决网页显示不全和排版问题"""
     try:
-        # 将 Markdown 换行符转换为 HTML 换行符，简单的排版处理
-        formatted_content = analysis_report.replace('\n', '<br>')
+        # 将 Markdown 换行符转换为 HTML 标签，确保网页正常换行
+        formatted_report = analysis_report.replace('\n', '<br>')
         
-        html_content = f"""
+        html_template = f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -232,32 +243,23 @@ def generate_web_page(analysis_report):
     <title>AI 行业深度内参</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
     <style>
-        .markdown-body {{
-            box-sizing: border-box;
-            min-width: 200px;
-            max-width: 980px;
-            margin: 0 auto;
-            padding: 45px;
-        }}
-        @media (max-width: 767px) {{
-            .markdown-body {{ padding: 15px; }}
-        }}
+        .markdown-body {{ box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }}
+        @media (max-width: 767px) {{ .markdown-body {{ padding: 15px; }} }}
         body {{ background-color: #f6f8fa; }}
     </style>
 </head>
 <body>
     <article class="markdown-body">
-        {formatted_content}
+        {formatted_report}
     </article>
 </body>
 </html>
         """
-        # 核心修改：保存为 index.html 
+        # 保存为 index.html 
         with open("index.html", "w", encoding="utf-8") as f:
-            f.write(html_content)
-        print("✅ 网页文件 index.html 已成功生成")
-    except Exception as e: 
-        print(f"❌ 网页生成失败：{e}")
+            f.write(html_template)
+        print("✅ 网页文件 index.html 已成功生成（全量内容）")
+    except Exception as e: print(f"❌ 网页生成失败：{e}")
 
 def send_smart_push(analysis_report, sendkey, username, repo_name):
     """精简推送，解决微信截断问题"""
