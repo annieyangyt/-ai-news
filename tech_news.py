@@ -218,15 +218,44 @@ def get_gemini_analysis(news_list, historical_context):
 # --- 4. 网页生成与推送 (商业化核心) ---
 
 def generate_web_page(analysis_report):
-    """生成带 Front Matter 的 index.md，强制触发渲染"""
+    """生成带样式的 index.html，彻底解决 404 并实现精美排版"""
     try:
-        # 核心修改：在报告内容最前面加上两行 ---
-        # 这样 GitHub Pages 才会知道这是一个需要转换成网页的 index 文件
-        web_content = "---\n---\n\n" + analysis_report 
+        # 将 Markdown 换行符转换为 HTML 换行符，简单的排版处理
+        formatted_content = analysis_report.replace('\n', '<br>')
         
-        with open("index.md", "w", encoding="utf-8") as f:
-            f.write(web_content)
-        print("✅ 网页文件 index.md 已生成（已添加渲染开关）")
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 行业深度内参</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+    <style>
+        .markdown-body {{
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+        }}
+        @media (max-width: 767px) {{
+            .markdown-body {{ padding: 15px; }}
+        }}
+        body {{ background-color: #f6f8fa; }}
+    </style>
+</head>
+<body>
+    <article class="markdown-body">
+        {formatted_content}
+    </article>
+</body>
+</html>
+        """
+        # 核心修改：保存为 index.html 
+        with open("index.html", "w", encoding="utf-8") as f:
+            f.write(html_content)
+        print("✅ 网页文件 index.html 已成功生成")
     except Exception as e: 
         print(f"❌ 网页生成失败：{e}")
 
