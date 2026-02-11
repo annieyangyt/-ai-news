@@ -1,48 +1,40 @@
-name: Daily Tech News Push (Deep Analysis)
+name: Daily Strategy Push & Web Deploy
 
 on:
   schedule:
-    # 每天北京时间早上 7:00 (即 UTC 前一天 23:00) 运行
     - cron: '0 23 * * *'
-  workflow_dispatch: # 允许手动点击运行
+  workflow_dispatch:
+
+permissions: # 关键：赋予部署网页的写入权限
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  build_and_deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # 确保能处理历史记录
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
-    
+        python-version: '3.10'
+
     - name: Install dependencies
-      run: |
-        pip install feedparser requests
-    
-    # 🆕 使用 GitHub Actions Cache 保存历史数据（推荐！）
-    - name: Cache history data
-      uses: actions/cache@v3
-      with:
-        path: news_history.json
-        key: news-history-${{ github.run_number }}
-        restore-keys: |
-          news-history-
-    
+      run: pip install feedparser requests
+
     - name: Run script
       env:
         SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python tech_news.py
-    
-    # 🆕 可选：上传报告为 Artifact（可下载查看）
-    - name: Upload report
-      if: always()
-      uses: actions/upload-artifact@v4
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
       with:
-        name: daily-report-${{ github.run_number }}
-        path: reports/
-        retention-days: 30  # 保留30天
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./ # 部署当前目录下的 index.md
+        publish_branch: gh-pages # 部署到此分支
